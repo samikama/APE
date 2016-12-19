@@ -1,0 +1,5 @@
+2016-02-17 Attila Krasznahorkay <Attila.Krasznahorkay@cern.ch>
+	* Added an explicit dependency on Boost, since yaml-cpp depends
+	  on it. At least the version that we use currently, does.
+	* Added a ChangeLog...
+	* Not tagging, will leave that up to Sami.

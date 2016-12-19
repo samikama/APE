@@ -1,0 +1,34 @@
+# # - Config file for the APE package
+# # It defines the following variables
+# #  APE_INCLUDE_DIRS - include directories for APE
+# #  APE_LIBS    - libraries to link against
+ 
+# # Compute paths
+# get_filename_component(APE_CMAKE_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
+# set(APE_INCLUDE_DIRS "@CONF_INCLUDE_DIRS@")
+ 
+# # Our library dependencies (contains definitions for IMPORTED targets)
+# if(NOT TARGET apeMod AND NOT APE_BINARY_DIR)
+#   include("${APE_CMAKE_DIR}/APETargets.cmake")
+# endif()
+ 
+# # These are IMPORTED targets created by FooBarTargets.cmake
+# set(APE_LIBRARIES APEContainer)
+# set(APE_EXECUTABLE apeMod)
+
+include("${CMAKE_CURRENT_LIST_DIR}/@targets_export_name@.cmake")
+
+@PACKAGE_INIT@
+
+set_and_check(APE_INCLUDE_DIR "@PACKAGE_INCLUDE_INSTALL_DIR@")
+set_and_check(APE_LIB_DIR "@PACKAGE_LIB_INSTALL_DIR@")
+set_and_check(TBB_INCLUDES_DIR "@PACKAGE_TBB_INCLUDES_DIR@")
+set_and_check(TBB_LIBS_DIR "@PACKAGE_TBB_LIBS_DIR@")
+set(APE_LIBS ${APE_LIB_DIR}/libAPEContainer.so ${APE_LIB_DIR}/libAPEConfig.so ${TBB_LIBS_DIR}/libtbb.so)
+set_and_check(YAMPL_INCLUDES_DIR "@PACKAGE_YAMPL_INCS@")
+set_and_check(YAMPL_LIBS "@PACKAGE_YAMPL_LIBS@")
+macro (dump_var_ape arg )
+  message("${arg}=${${arg}}")
+endmacro (dump_var_ape)
+message("Including APEConfig.cmake")
+check_required_components(APE)

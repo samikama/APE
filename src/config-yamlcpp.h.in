@@ -1,0 +1,1 @@
+#cmakedefine HAVE_YAMLCPP03 1

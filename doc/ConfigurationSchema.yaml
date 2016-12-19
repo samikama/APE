@@ -1,0 +1,145 @@
+# This is an example of APE server configuration schema in Yaml Mode
+# This is not a real configuration, just an example
+# See http://yaml.org/spec/1.2/spec.html for yaml documentation
+#
+# See bottom of the file for an example of how this file is converted to ConfigTree
+# classes
+#
+# Server map defines configuration of APE server
+#
+- Server:
+    CommType: SHM # valid values SHM, PIPE, ZMQ
+    CommChannelUp: apeSock_upload # upload channel name, ip/port for zmq
+    CommChannelDown: apeSock # download channel name, ip/port for zmq
+    CommChannelUseUID: true # whether add UID to socket names, only for pipe and SHM
+    NumReceivers: 1 # number of receiver threads
+    NumSenders: 1 # number of sender threads
+    NumRunners: 4 # number of runner threads
+    MaxWorkTokens: 400 # number of requests on flight before server blocks
+#
+# Module defines configuration of a module
+# Each module will be given their own ConfigTree and will not see
+# other configurations. Module configurations are in free format, i.e.
+# you can add your own keywords, lists maps etc. In turn you have to 
+# parse them in your configure() call from ConfigTree object
+# A set of suggested common keywords are given as example below
+#
+- Module:
+    Name: AGPUModule #name of the module, for humans, REQUIRED
+    Library: libAGPUModule.so # library of the module, REQUIRED
+    AllowedGPUs: [ 0, 1, 2, 3 ] # a list of GPUs that module can use
+    NumTokens:   [ 32, 10, 64, 10 ] # allocations of tokens for each gpu
+    MaxMem:      [ 3000, 750, 6000, 750 ] # maximum allowed memory for each gpu
+  # add any other module specific configuration to here
+  # Just making up
+  # HoughRCutoff: 100
+  # MinPt: 0.05
+  # TimingHisto:
+  #  Nbins: 1000
+  #  xmin: 0.
+  #  xmax: 5000.
+  #  precision: milliseconds
+
+- Module:
+    Name: AnotherGPUModule #name of the Module
+    Library: libSuperFancyGPUModule.so # library of the module 
+    AllowedGPUs: [ 1, 3 ] # can use only gpus 1 and 3, should handle if there are less gpus
+    NumTokens:   [ 96, 120 ] # allocated 96 tokens in first gpu and 120 in 3rd
+    MaxMem:      [ 8000, 10000 ] # can allocate up to 8GB in GPU-1 and 10G on GPU-3
+
+- Module:
+    Name: CPUModule
+    Library: libCPUModule.so #can be a full path
+    NumThreads: 10 # number of threads that module can spawn
+    NumTokens: 20 # max number of works module can have on flight
+    MemLimit: 4000 # module can allocate max 4G for its scratch spaces
+                 # if it num tokens require more memory, token count should
+                 # be reduced accordingly
+##################################################################################
+#    When parsed this configuration will have following structure
+#  
+#  CT-> APEConfig::ConfigTree
+#  Pr-> APEConfig::Parameter
+#
+# CT(APE):
+#   CT(Server): # maps are converted to CTs populated with key-value Pr()s 
+#     - Pr(CommType): SHM
+#     - Pr(CommChannel): apeSock
+#     - Pr(NumReceivers): 1
+#     - Pr(NumSenders): 1
+#     - Pr(MaxWorkTokens): 400
+#   CT(Module):
+#       CT(AllowedGPUs): #lists are converted to CTs with each entry as a Pr("param")
+#         - Pr(param): 0
+#         - Pr(param): 1
+#         - Pr(param): 2
+#         - Pr(param): 3
+#       CT(NumTokens): #order of the lists should be preserved
+#         - Pr(param): 32
+#         - Pr(param): 10
+#         - Pr(param): 64
+#         - Pr(param): 10
+#       CT(MaxMem): #order of the lists should be preserved
+#         - Pr(param): 3000
+#         - Pr(param): 750
+#         - Pr(param): 6000
+#         - Pr(param): 750
+#     - Pr(Name): AGPUModule
+#     - Pr(Library): libAGPUModule.so
+#   CT(Module):
+#       CT(AllowedGPUs): #lists are converted to CTs with each entry as a Pr("param")
+#         - Pr(param): 1
+#         - Pr(param): 3
+#       CT(NumTokens): #order of the lists should be preserved
+#         - Pr(param): 96
+#         - Pr(param): 120
+#       CT(MaxMem): #order of the lists should be preserved
+#         - Pr(param): 8000
+#         - Pr(param): 1000
+#     - Pr(Name): AnotherGPUModule
+#     - Pr(Library): libSuperFancyGPUModule.so
+#   CT(Module): #CPU module don't have any lists, so it doesn't have any subtrees
+#     - Pr(Name): CPUModule
+#     - Pr(Library): libCPUModule.so
+#     - Pr(NumThreads): 10
+#     - Pr(NumTokens): 20
+#     - Pr(MemLimit): 4000
+#
+#
+# Accessing the data is simple. For example the code snippet
+# below is used by the server to iterate over module sections and load all modules
+#
+#
+# // SC is std::shared_ptr<CT("Server")>
+# std::string commType=SC->getValue<std::string>("CommType");
+# std::string commChUp=SC->getValue<>("CommChannelUp");
+# std::string commChDown=SC->getValue<>("CommChannelDown");
+# bool useUID=SC->getValue<bool>("CommChannelUseUID");
+# unsigned int numTokens=SC->getValue<unsigned int>("MaxWorkTokens");
+# m_info.resize(numTokens);
+# m_nReceivers=SC->getValue<unsigned int>("NumReceivers");
+# m_nSenders=SC->getValue<unsigned int>("NumSenders");
+# m_nRunners=SC->getValue<unsigned int>("NumRunners");
+# bool hasModule=false;
+# for(auto &ct : c->findSubtrees("Module")){
+#   hasModule=true;
+#   std::string modLib=ct->getValue<>("Library");
+#   auto module=loadModule(modLib);
+#   if(module && !module->configure(ct)){
+#     std::cerr<<"Module "<<ct->getValue<>("Name")<<" from library "<<modLib<<" failed configuration"<<std::endl;
+#   };
+# }
+# if(m_moduleMap.size()==0){
+#   if(hasModule){
+#     std::cerr<<"Module configuration(s) failed. Check config file"<<std::endl;
+#     throw std::logic_error("Incorrect module Configuration(s)");
+#   }
+#   std::cerr<<"Need at least 1 Module in configuration"<<std::endl;
+#   throw std::logic_error("Need at least one Module section in configuration");
+# }
+# arrays can be accessed by iterating over findParameters("param")
+# for example if MC is configuration tree for AGPUModule
+# numTokens can be iterated by
+# for(auto p:MC->findParameters("param")){
+#   std::cout<<p->getValue<unsigned int>()<<" "<<std::endl;
+# }

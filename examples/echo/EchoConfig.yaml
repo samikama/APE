@@ -1,0 +1,19 @@
+# example config to run Echo Module
+- Server:
+    CommType: SHM # valid values SHM, PIPE, ZMQ
+    CommChannelUp: apeSock_upload # upload channel name, ip/port for zmq
+    CommChannelDown: apeSock # download channel name, ip/port for zmq
+    CommChannelUseUID: true # whether add UID to socket names, only for pipe and SHM
+    NumReceivers: 1 # number of receiver threads
+    NumSenders: 1 # number of sender threads
+    NumRunners: 4 # number of runner threads
+    MaxWorkTokens: 5000 # number of requests on flight before server blocks
+- Module:
+    Name: Echo Example
+    Library: libEchoModule.so
+- Client:
+    UpperLimit: 16000000
+    LowerLimit: 4
+    NumSteps:   10
+    NumTrials:  100
+    LinearSteps: false

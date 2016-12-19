@@ -1,0 +1,8 @@
+cmake_minimum_required (VERSION 2.8)
+add_library(EchoModule SHARED EchoModule.cxx)
+add_executable(echoClient client.cxx)
+set_target_properties(echoClient PROPERTIES COMPILE_FLAGS " -I${YAMPL_INCLUDE_DIRS} ")
+target_link_libraries(EchoModule APEContainer APEUtils APEConfig rt)
+target_link_libraries(echoClient APEContainer APEConfig APEUtils ${YAMPL_LIBRARIES} uuid rt)
+install(TARGETS EchoModule DESTINATION lib)
+install(TARGETS echoClient DESTINATION bin)
