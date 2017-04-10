@@ -73,6 +73,8 @@ bool APE::Server::openSocket(const std::string &channelType,
   auto chanType=yampl::LOCAL_SHM;
   if(channelType=="PIPE"){
     chanType=yampl::LOCAL_PIPE;
+  }else if(channelType=="ZMQLOCAL"){
+    chanType=yampl::LOCAL;
   }else if(channelType=="ZMQ"){
     chanType=yampl::DISTRIBUTED;    
   }
