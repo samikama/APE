@@ -5,6 +5,7 @@
 #include <vector>
 #include <mutex>
 #include <atomic>
+#include <numeric>
 
 namespace APEUtils{
   class Locksmith{
