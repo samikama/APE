@@ -55,3 +55,17 @@
           Event: 40203
           Module: 71
           Alg: 77006
+    DelayConfig:
+      - Delay:
+          Module: 51
+          Alg: 50002
+          Params: [10,50] #delay randomization parameters in milliseconds, 10ms+0-50ms sleep before algorithm
+      - Delay:
+          Module: 71
+          Alg: 77007
+          Params: [10,200]
+      - Delay:
+          Module: 269484032
+          Alg: 14001
+          Params: [10,50]
+      

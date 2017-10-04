@@ -20,6 +20,7 @@
 #include <tuple>
 #include <algorithm>
 #include <set>
+#include <random>
 #include <tbb/atomic.h>
 #include <APE/ServerDefines.hpp>
 #include <condition_variable>
@@ -48,14 +49,17 @@ void printUsage(std::string myName){
 
 class Event{
 public:
-  Event(uint64_t eventId):m_eventId(eventId),last(0){};
+  Event(uint64_t eventId):m_eventId(eventId),last(0),m_gen(std::random_device()()){
+    m_gen.seed(double(eventId));
+  };
+
   ~Event(){};
-  bool addRequest(int reqId,int module,int alg,std::shared_ptr<APE::BufferContainer> buff,bool hasResp=true){
-    auto in=std::find_if(std::begin(m_buffers),std::end(m_buffers),[reqId](const std::tuple<int,std::shared_ptr<APE::BufferContainer>,bool>&a){return std::get<0>(a)==reqId;});
+  bool addRequest(int reqId,int mod,int alg,std::shared_ptr<APE::BufferContainer> buff,bool hasResp=true,double offset=100.0,double width=50.){
+    auto in=std::find_if(std::begin(m_buffers),std::end(m_buffers),[reqId](const std::tuple<int,std::shared_ptr<APE::BufferContainer>,bool,double,double>&a){return std::get<0>(a)==reqId;});
     if(in!=std::end(m_buffers))return false;
-    m_buffers.emplace_back(std::make_tuple(reqId,buff,hasResp));
-    std::sort(std::begin(m_buffers),std::end(m_buffers),[](const std::tuple<int,std::shared_ptr<APE::BufferContainer>,bool>&a, 
-							   const std::tuple<int,std::shared_ptr<APE::BufferContainer>,bool>&b){
+    m_buffers.emplace_back(std::make_tuple(reqId,buff,hasResp,offset,width));
+    std::sort(std::begin(m_buffers),std::end(m_buffers),[](const std::tuple<int,std::shared_ptr<APE::BufferContainer>,bool,double,double>&a, 
+							   const std::tuple<int,std::shared_ptr<APE::BufferContainer>,bool,double,double>&b){
 		return std::get<0>(a)<std::get<0>(b);});
     return true;
   }
@@ -64,19 +68,23 @@ public:
       return std::make_pair(std::shared_ptr<APE::BufferContainer>(0),false);
     };
     auto b=std::make_pair(std::get<1>(m_buffers.at(last)),std::get<2>(m_buffers.at(last)));
+    std::uniform_real_distribution<double> dis(0.,1.);
+    uint32_t sleeptime=dis(m_gen)*std::get<4>(m_buffers.at(last))+std::get<3>(m_buffers.at(last));
+    std::this_thread::sleep_for(std::chrono::milliseconds(sleeptime));
     last++;
     return b;
   }
-  bool addResponse(int module,int alg){return false;}
+  bool addResponse(int mod,int alg){return false;}
   uint64_t getEventId(){return m_eventId;}
   void resetRequests(){last=0;}
 private:
-  std::vector<std::tuple<int,std::shared_ptr<APE::BufferContainer>,bool> > m_buffers;
+  std::vector<std::tuple<int,std::shared_ptr<APE::BufferContainer>,bool,double,double> > m_buffers;
   uint64_t m_eventId;
   int last;
+  std::mt19937 m_gen;
 };
 
-bool name2fields(const std::string &name,uint64_t *evId, int *module,int *alg,int* req,int *needResponse){
+bool name2fields(const std::string &name,uint64_t *evId, int *mod,int *alg,int* req,int *needResponse){
   int currPos=0;
   char typ[50];
   uint64_t e;
@@ -85,14 +93,14 @@ bool name2fields(const std::string &name,uint64_t *evId, int *module,int *alg,in
     //std::cout<<name.substr(4).c_str()<<std::endl;
     sscanf(name.substr(4).c_str(),"%08ld-%d-%d-%d-%d.dat",&e,&m,&a,&r,&nr);
     *evId=e;
-    *module=m;
+    *mod=m;
     *alg=a;
     *req=r;
     *needResponse=nr;
   }else{
     sscanf(name.substr(5).c_str(),"%08ld-%d-%d.dat",&e,&m,&a);    
     *evId=e;
-    *module=m;
+    *mod=m;
     *alg=a;
     *req=-1;
     *needResponse=nr;
@@ -107,19 +115,28 @@ struct InitFile{
 };
 
 std::vector<Event> loadFiles(const std::string &path,const std::set<int> &enabledModules,
-			     std::vector<Event>& initEvts,std::vector<InitFile> &initFiles
+			     std::vector<Event>& initEvts,std::vector<InitFile> &initFiles,
+			     const std::vector<std::pair<std::vector<int>,std::vector<double>>> &delayTimings
 			     ){
   std::vector<Event> events;
   std::map<uint64_t,Event*> mEvents;
   std::map<uint64_t,Event*> initEvents;
   std::map<uint64_t,Event*>::iterator it;
+  std::map<int,std::map<int,std::vector<double>>> times;
+  for(auto &i:delayTimings){
+    auto& mods=i.first;
+    std::map<int,std::vector<double>> t;
+    t[mods[1]]=i.second;
+    times[mods[0]]=t;
+  }
   if(path.empty())return events;
   DIR *dir;
   struct dirent *ent;
   struct stat sb;
   int fd;
   std::set<std::string> files;
-
+  double defOffset=0.0;
+  double defWidth=50.;
   if ((dir = opendir (path.c_str())) != NULL) {
     while ((ent = readdir (dir)) != NULL) {
       std::string name(ent->d_name);
@@ -143,18 +160,18 @@ std::vector<Event> loadFiles(const std::string &path,const std::set<int> &enable
     char reqNameBuff[300];
     for(const auto & name:files){
       uint64_t evId=0;
-      int module=0;
+      int mod=0;
       int alg=0;
       int req=0;
       int needRes=0;
-      name2fields(name,&evId,&module,&alg,&req,&needRes);
-      //std::cout<<"Processing "<<name<<" evId="<<evId<<" mod="<<module<<" alg="<<alg<<" req="<<req<<" needRes="<<needRes<<std::endl;
+      name2fields(name,&evId,&mod,&alg,&req,&needRes);
+      //std::cout<<"Processing "<<name<<" evId="<<evId<<" mod="<<mod<<" alg="<<alg<<" req="<<req<<" needRes="<<needRes<<std::endl;
       if(req==-1)continue;// ignore response files
-      if(enabledModules.find(module)==enabledModules.end())continue;
+      if(enabledModules.find(mod)==enabledModules.end())continue;
       bool inInitList=false;
       for(auto& init:initFiles){
-	if((init.ev==evId) && (init.mod==module) && init.alg==alg){
-	  std::cout<<"Found init file Ev="<<evId<<" mod= "<<module<<" alg= "<<alg<<" "<<name<<std::endl;
+	if((init.ev==evId) && (init.mod==mod) && init.alg==alg){
+	  std::cout<<"Found init file Ev="<<evId<<" mod= "<<mod<<" alg= "<<alg<<" "<<name<<std::endl;
 	  inInitList=true;
 	  break;
 	}
@@ -170,7 +187,7 @@ std::vector<Event> loadFiles(const std::string &path,const std::set<int> &enable
 	  it=ins.first;
 	}
       }
-      snprintf(reqNameBuff,300,"Resp-%08ld-%d-%d.dat",evId,module,alg);
+      snprintf(reqNameBuff,300,"Resp-%08ld-%d-%d.dat",evId,mod,alg);
       //bool hasResp=(files.find(reqNameBuff)!=files.end());
 
       bool hasResp=(needRes==1);
@@ -193,7 +210,16 @@ std::vector<Event> loadFiles(const std::string &path,const std::set<int> &enable
 	exit(EXIT_FAILURE);
       }
       close(fd);
-      ev->addRequest(req,module,alg,bc,hasResp);
+      auto mit=times.find(mod);
+      if(mit!=times.end()){
+	if(mit->second.find(alg)!=mit->second.end()){
+	  ev->addRequest(req,mod,alg,bc,hasResp,mit->second[alg][0],mit->second[alg][1]);
+	}else{
+	  ev->addRequest(req,mod,alg,bc,hasResp,defOffset,defWidth);
+	}
+      }else{
+	ev->addRequest(req,mod,alg,bc,hasResp,defOffset,defWidth);
+      }
     }
     events.reserve(mEvents.size());
     for(const auto& evs:mEvents){
@@ -429,6 +455,7 @@ int main(int argc,char *argv[]){
   std::string serverRName;
   std::string serverSName;
   std::vector<InitFile> initFiles;
+  std::vector<std::pair<std::vector<int>,std::vector<double>>> delayParams;
   if(config){
     //auto SC=config->getSubtree("Server");
     auto CC=config->getSubtree("Client");
@@ -448,6 +475,15 @@ int main(int argc,char *argv[]){
 	       <<" module= "<<fs.mod<<" alg= "<<fs.alg<<std::endl;
       initFiles.push_back(fs);
     }
+    auto D=CC->getSubtree("DelayConfig");
+    for (auto& dels:D->findSubtrees("Delay")){
+      std::vector<double> P;
+      for(auto p:dels->getSubtree("Params")->findParameters("param")){
+	P.push_back(p->getValue<double>());
+      }
+      std::vector<int> ma{dels->getValue<int>("Module"),dels->getValue<int>("Alg")};
+      delayParams.emplace_back(std::make_pair(ma,P));
+    }
   }else{
     std::cerr<<"Couldn't find config file "<<configName<<std::endl;
     exit(EXIT_FAILURE);
@@ -455,7 +491,8 @@ int main(int argc,char *argv[]){
   children.reserve(nforks);
   std::cout<<"Starting loading files"<<std::endl;
   std::vector<Event> initializationEvents;
-  auto events=loadFiles(dataDir,enabledModules,initializationEvents,initFiles);
+
+  auto events=loadFiles(dataDir,enabledModules,initializationEvents,initFiles,delayParams);
   std::cout<<"Found "<<events.size()<<" Events."<<std::endl;
   std::cout<<"Initiating connection to server"<<std::endl;
   openComm(factory,ssocket,rsocket,config->getSubtree("Server"),false);
