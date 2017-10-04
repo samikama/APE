@@ -87,6 +87,8 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake/")
 find_package(TBB REQUIRED)
 find_package(Yampl REQUIRED)
 find_package(Yamlcpp REQUIRED)
+find_package(Threads)
+
 include_directories(${TBB_INCLUDE_DIRS} ${YAMPL_INCLUDE_DIRS})
 
 if((${CMAKE_VERSION} VERSION_GREATER "3.1.0") OR (${CMAKE_VERSION} VERSION_EQUAL "3.1.0"))
@@ -113,6 +115,7 @@ target_link_libraries(apeMod
   ${YAMPL_LIBRARIES}
   #${TBB_LIBRARY_DIR}/${CMAKE_SHARED_LIBRARY_PREFIX}tbb${CMAKE_SHARED_LIBRARY_SUFFIX} 
   ${TBB_LIBRARY}
+  Threads::Threads
   APEContainer APEConfig APEUtils
   rt dl
   )
